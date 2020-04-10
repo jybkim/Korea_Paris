@@ -1,0 +1,213 @@
+---
+title: "South Korea's CO2 Data"
+output: html_document
+---
+
+### Credits
+
+Paris Accord data is from <https://github.com/openclimatedata/paris-agreement-entry-into-force/tree/master/data>
+
+CO2 Emissions Data is from the World Bank World Development Indicators. 
+
+```{r Setup and Paris Data, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# use library to load packages
+
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(gt)
+library(rvest)
+library(forcats)
+library(janitor)
+
+# read_csv and assign that to x
+
+x <- read_csv('raw-data/paris.csv') %>%
+  
+  # clean names just in case to make data look more pleasing
+  
+  clean_names()
+
+# Paris Data from <https://github.com/openclimatedata/paris-agreement-entry-into-force/tree/master/data>
+
+
+```
+
+```{r Set Up World Bank Dataset into R, echo = FALSE}
+
+# set up the wb_co2 dataset
+
+
+wb <- read_csv('raw-data/worldbank_co2.csv', skip = 4, 
+                col_types = cols(
+                  .default = col_double(),
+   `Country Name` = col_character(),
+   `Country Code` = col_character(),
+   `Indicator Name` = col_character(),
+   `Indicator Code` = col_character(),
+   `2019` = col_double()
+ )) %>%
+  
+  # clean names just in case to make data look more pleasing
+  
+  clean_names()
+
+```
+
+```{r Combining CO2 WB Data and Paris , echo = FALSE}
+
+
+# using South Korea for data 
+# country_name = Republic of Korea
+# country code is KOR
+
+
+# first filter for CO2 data only from Republic of Korea 
+# pivot_longer by DROPPING the columns that I am not using
+
+wbkor <- wb %>%
+  filter(country_code == "KOR") 
+
+# filter from Paris data for KOR
+
+xkor <- x %>%
+  filter(code == "KOR")
+
+
+# merge the two datasets filtered for KOR using full_join based on code
+
+korea <- xkor %>%
+  full_join(wbkor, by = c("code" = "country_code")) 
+
+
+
+
+# pivot command
+
+korea_pivot <- korea %>%
+  pivot_longer(cols = starts_with("x"), 
+               names_to = "year_piv",
+               values_to = "emissions_per_capita") %>%
+   
+  # select for specific columns
+
+  select(country_name, code, indicator_name, indicator_code, year_piv,
+         emissions_per_capita, date_of_effect)
+
+
+# sub out x character from string
+
+korea_pivot$year_piv <- gsub("x", "", as.character(korea_pivot$year_piv)) 
+
+
+
+# rename the year_piv to Year for convenience
+# remove rows without observations in emissions_per_capita 
+
+korea_pivot <- korea_pivot %>%
+  rename(Year = year_piv) %>%
+  filter(!is.na(emissions_per_capita))
+
+```
+
+
+```{r Graphing GGPLOT for CO2 Data, echo = FALSE}
+
+
+
+# using South Korea for data 
+# country_name = Republic of Korea
+# country code is KOR
+
+
+# change character to numeric column??
+
+korea_pivot$Year <- as.numeric(as.character(korea_pivot$Year))
+
+
+
+
+# ggplot the data 
+
+gg_korea <- ggplot(korea_pivot, aes(x = Year, 
+                                    y = emissions_per_capita)) + 
+  geom_point() +
+  
+  # add title
+    
+  ggtitle("South Korea's CO2 Emissions Per Capita") +
+  
+  # make it theme_classic
+  
+  theme_classic() +
+  
+  # modify y axis title
+  
+  labs(y = "Metric Tons Per Capita") + 
+  
+  # add edits to theme so x axis can shift
+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  
+  
+  # add scale to x to make sure dates resemble
+  
+    scale_x_continuous(breaks = seq(1960, 2000, by = 20),
+                       labels = c("1960", "1980", "2000"))
+
+
+
+# pull out one date from date_of_effect
+
+koreadate <- korea_pivot %>%
+  slice(1) %>%
+  pull(date_of_effect)
+  
+
+# use method found from Google
+
+formdate=as.POSIXlt(koreadate, format="%Y-%m-%d")
+
+
+# what is the numerical value of year?
+
+num_year <- formdate$year 
+
+# to get to 2016 from formdate$year, need to add 1900
+
+
+# date number of date_of_effect
+
+actual_day <-formdate$yday
+
+# numerical value of the date (2016 is the leap year)
+
+num_day <- actual_day/366
+
+# add the numerical value of date to year
+
+kordate <- 1900+ num_year+ num_day
+
+
+
+# add a vertical line of date of effect on ggplot
+
+gg_korea_final <- gg_korea + geom_vline(xintercept = kordate,
+                                  linetype = "solid") +
+  
+  # add text to xintercept for effect of Paris Accord
+  
+  annotate(geom = "text", x = (kordate - 1), y = 6, 
+             label = "Year Paris Accord \n Took Effect", 
+           color = "blue", angle = 90, hjust = 0.5, vjust = 0)
+  
+
+# print final result 
+
+print(gg_korea_final)
+
+```
